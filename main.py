@@ -140,22 +140,10 @@ def call_perplexity_api(prompt, model, api_key):
         'Content-Type': 'application/json'
     }
     
-    # Build messages array with conversation history
-    messages = []
-    
-    # Add conversation history
-    for message in st.session_state.conversation_history:
-        messages.append(message)
-    
-    # Add current user message
-    messages.append({
-        'role': 'user',
-        'content': prompt
-    })
-    
+    # Use conversation history directly (user message already added)
     data = {
         'model': model,
-        'messages': messages
+        'messages': st.session_state.conversation_history
     }
     
     try:
@@ -173,22 +161,10 @@ def call_groq_api(prompt, model, api_key):
         'Content-Type': 'application/json'
     }
     
-    # Build messages array with conversation history
-    messages = []
-    
-    # Add conversation history
-    for message in st.session_state.conversation_history:
-        messages.append(message)
-    
-    # Add current user message
-    messages.append({
-        'role': 'user',
-        'content': prompt
-    })
-    
+    # Use conversation history directly (user message already added)
     data = {
         'model': model,
-        'messages': messages
+        'messages': st.session_state.conversation_history
     }
     
     try:
@@ -329,14 +305,14 @@ def main():
         elif model == 'sonar-online':
             st.info("🌐 **REAL-TIME**: Access to current web information and live data!")
     
-    # Display conversation history
+    # Display conversation history with expand/collapse
     if st.session_state.conversation_history:
-        st.markdown("### 💬 Conversation History")
-        for i, message in enumerate(st.session_state.conversation_history):
-            if message['role'] == 'user':
-                st.markdown(f"**👤 You:** {message['content']}")
-            else:
-                st.markdown(f"**🤖 AI:** {message['content']}")
+        with st.expander("💬 Conversation History", expanded=True):
+            for i, message in enumerate(st.session_state.conversation_history):
+                if message['role'] == 'user':
+                    st.markdown(f"**👤 You:** {message['content']}")
+                else:
+                    st.markdown(f"**🤖 AI:** {message['content']}")
         st.markdown("---")
     
     # Main chat interface
