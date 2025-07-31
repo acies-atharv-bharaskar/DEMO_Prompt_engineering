@@ -110,7 +110,7 @@ MODELS = {
 
 }
 
-def call_ai_api(prompt, model, perplexity_key, groq_key):
+def call_ai_api(prompt, model, perplexity_key, groq_key, conversation_history):
     """Make API call to the appropriate AI provider"""
     model_config = MODELS.get(model)
     if not model_config:
@@ -123,17 +123,17 @@ def call_ai_api(prompt, model, perplexity_key, groq_key):
         if not perplexity_key:
             st.error("Please enter your Perplexity API key in the sidebar")
             return None
-        return call_perplexity_api(prompt, model, perplexity_key)
+        return call_perplexity_api(prompt, model, perplexity_key, conversation_history)
     elif provider == 'groq':
         if not groq_key:
             st.error("Please enter your Groq API key in the sidebar")
             return None
-        return call_groq_api(prompt, model, groq_key)
+        return call_groq_api(prompt, model, groq_key, conversation_history)
     else:
         st.error(f"Unsupported provider: {provider}")
         return None
 
-def call_perplexity_api(prompt, model, api_key):
+def call_perplexity_api(prompt, model, api_key, conversation_history):
     """Make API call to Perplexity AI"""
     headers = {
         'Authorization': f'Bearer {api_key}',
@@ -143,7 +143,7 @@ def call_perplexity_api(prompt, model, api_key):
     # Use conversation history directly (user message already added)
     data = {
         'model': model,
-        'messages': st.session_state.conversation_history
+        'messages': conversation_history
     }
     
     try:
@@ -154,7 +154,7 @@ def call_perplexity_api(prompt, model, api_key):
         st.error(f"Perplexity API Error: {str(e)}")
         return None
 
-def call_groq_api(prompt, model, api_key):
+def call_groq_api(prompt, model, api_key, conversation_history):
     """Make API call to Groq AI"""
     headers = {
         'Authorization': f'Bearer {api_key}',
@@ -164,7 +164,7 @@ def call_groq_api(prompt, model, api_key):
     # Use conversation history directly (user message already added)
     data = {
         'model': model,
-        'messages': st.session_state.conversation_history
+        'messages': conversation_history
     }
     
     try:
@@ -315,69 +315,271 @@ def main():
                     st.markdown(f"**🤖 AI:** {message['content']}")
         st.markdown("---")
     
-    # Main chat interface
-    col1, col2 = st.columns([3, 1])
+    # Comparison mode toggle
+    comparison_mode = st.checkbox("🔄 Enable Model Comparison", help="Compare two different models side by side")
     
-    with col1:
-        prompt = st.text_area(
-            "Enter your question or prompt:",
-            placeholder="What would you like to know?",
-            height=120
+    if comparison_mode:
+        st.markdown("### 🔄 Model Comparison Mode")
+        
+        # Model selection for comparison
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**Model 1 (Left Side):**")
+            model1_index = st.selectbox(
+                "Choose Model 1:",
+                range(len(model_options)),
+                format_func=lambda x: model_labels[x],
+                key="model1_select"
+            )
+            model1 = model_options[model1_index]
+        
+        with col2:
+            st.markdown("**Model 2 (Right Side):**")
+            model2_index = st.selectbox(
+                "Choose Model 2:",
+                range(len(model_options)),
+                format_func=lambda x: model_labels[x],
+                key="model2_select"
+            )
+            model2 = model_options[model2_index]
+        
+        # Prompt mode selection
+        prompt_mode = st.radio(
+            "**Prompt Mode:**",
+            ["Same Prompt", "Different Prompts"],
+            help="Choose whether to use the same prompt for both models or different prompts"
         )
+        
+        st.markdown("---")
     
-    with col2:
-        st.markdown("<br>", unsafe_allow_html=True)  # Add some spacing
-        submit_button = st.button("🚀 Send", type="primary", use_container_width=True)
-        clear_button = st.button("🗑️ Clear", use_container_width=True)
+    # Main chat interface using form to prevent double-click issues
+    with st.form("chat_form", clear_on_submit=True):
+        if comparison_mode and prompt_mode == "Different Prompts":
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                prompt1 = st.text_area(
+                    "Prompt for Model 1:",
+                    placeholder="Enter prompt for left model...",
+                    height=120,
+                    key="prompt1_input"
+                )
+            
+            with col2:
+                prompt2 = st.text_area(
+                    "Prompt for Model 2:",
+                    placeholder="Enter prompt for right model...",
+                    height=120,
+                    key="prompt2_input"
+                )
+        else:
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                prompt = st.text_area(
+                    "Enter your question or prompt:",
+                    placeholder="What would you like to know?",
+                    height=120,
+                    key="prompt_input"
+                )
+            
+            with col2:
+                st.markdown("<br>", unsafe_allow_html=True)  # Add some spacing
+        
+        # Single submit button for all modes
+        if comparison_mode:
+            submit_button = st.form_submit_button("🔄 Compare Models", type="primary", use_container_width=True)
+        else:
+            submit_button = st.form_submit_button("🚀 Send", type="primary", use_container_width=True)
+    
+    # Clear button outside form
+    clear_button = st.button("🗑️ Clear", use_container_width=True)
     
     if clear_button:
         st.session_state.conversation_history = []
         st.rerun()
     
-    if submit_button and prompt:
-        model_name = MODELS[model]['name']
-        
-        # Add user message to conversation history BEFORE making API call
-        st.session_state.conversation_history.append({
-            'role': 'user',
-            'content': prompt
-        })
-        
-        with st.spinner(f"Getting response from {model_name}..."):
-            # Make API call
-            response = call_ai_api(prompt, model, perplexity_key, groq_key)
+    # Handle form submission
+    if submit_button:
+        if comparison_mode:
+            # Comparison mode logic
+            if prompt_mode == "Same Prompt":
+                if not prompt:
+                    st.warning("Please enter a prompt for comparison!")
+                    return
+                
+                # Get model names
+                model1_name = MODELS[model1]['name']
+                model2_name = MODELS[model2]['name']
+                
+                st.markdown("---")
+                st.markdown("### 🔄 Model Comparison Results")
+                
+                # Create two columns for side-by-side comparison
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown(f"**🤖 {model1_name}**")
+                    with st.spinner(f"Getting response from {model1_name}..."):
+                        # Create messages array with the current prompt
+                        messages1 = [{'role': 'user', 'content': prompt}]
+                        response1 = call_ai_api(prompt, model1, perplexity_key, groq_key, messages1)
+                        
+                        if response1:
+                            try:
+                                content1 = response1['choices'][0]['message']['content']
+                                st.markdown(content1)
+                                
+                                with st.expander(f"📊 {model1_name} Details"):
+                                    st.write("**Model:**", response1.get('model', model1))
+                                    st.write("**Provider:**", MODELS[model1]['provider'].title())
+                                    if 'usage' in response1:
+                                        st.write("**Tokens:**", response1['usage'].get('total_tokens', 'N/A'))
+                            except (KeyError, IndexError) as e:
+                                st.error(f"Error with {model1_name}")
+                        else:
+                            st.error(f"Failed to get response from {model1_name}")
+                
+                with col2:
+                    st.markdown(f"**🤖 {model2_name}**")
+                    with st.spinner(f"Getting response from {model2_name}..."):
+                        # Create messages array with the current prompt
+                        messages2 = [{'role': 'user', 'content': prompt}]
+                        response2 = call_ai_api(prompt, model2, perplexity_key, groq_key, messages2)
+                        
+                        if response2:
+                            try:
+                                content2 = response2['choices'][0]['message']['content']
+                                st.markdown(content2)
+                                
+                                with st.expander(f"📊 {model2_name} Details"):
+                                    st.write("**Model:**", response2.get('model', model2))
+                                    st.write("**Provider:**", MODELS[model2]['provider'].title())
+                                    if 'usage' in response2:
+                                        st.write("**Tokens:**", response2['usage'].get('total_tokens', 'N/A'))
+                            except (KeyError, IndexError) as e:
+                                st.error(f"Error with {model2_name}")
+                        else:
+                            st.error(f"Failed to get response from {model2_name}")
             
-            if response:
-                try:
-                    content = response['choices'][0]['message']['content']
-                    
-                    # Add AI response to conversation history
-                    st.session_state.conversation_history.append({
-                        'role': 'assistant',
-                        'content': content
-                    })
-                    
-                    # Display response
-                    st.markdown("---")
-                    st.markdown("### 💬 Response:")
-                    st.markdown(content)
-                    
-                    # Show additional info in expander
-                    with st.expander("📊 Response Details"):
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.write("**Model Used:**", response.get('model', model))
-                        with col2:
-                            st.write("**Provider:**", MODELS[model]['provider'].title())
-                        with col3:
-                            if 'usage' in response:
-                                st.write("**Tokens Used:**", response['usage'].get('total_tokens', 'N/A'))
+            else:  # Different Prompts
+                if not prompt1 or not prompt2:
+                    st.warning("Please enter prompts for both models!")
+                    return
+                
+                # Get model names
+                model1_name = MODELS[model1]['name']
+                model2_name = MODELS[model2]['name']
+                
+                st.markdown("---")
+                st.markdown("### 🔄 Model Comparison Results")
+                
+                # Create two columns for side-by-side comparison
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown(f"**🤖 {model1_name}**")
+                    st.markdown(f"**Prompt:** {prompt1}")
+                    with st.spinner(f"Getting response from {model1_name}..."):
+                        # Create messages array with the current prompt
+                        messages1 = [{'role': 'user', 'content': prompt1}]
+                        response1 = call_ai_api(prompt1, model1, perplexity_key, groq_key, messages1)
                         
+                        if response1:
+                            try:
+                                content1 = response1['choices'][0]['message']['content']
+                                st.markdown(content1)
+                                
+                                with st.expander(f"📊 {model1_name} Details"):
+                                    st.write("**Model:**", response1.get('model', model1))
+                                    st.write("**Provider:**", MODELS[model1]['provider'].title())
+                                    if 'usage' in response1:
+                                        st.write("**Tokens:**", response1['usage'].get('total_tokens', 'N/A'))
+                            except (KeyError, IndexError) as e:
+                                st.error(f"Error with {model1_name}")
+                        else:
+                            st.error(f"Failed to get response from {model1_name}")
+                
+                with col2:
+                    st.markdown(f"**🤖 {model2_name}**")
+                    st.markdown(f"**Prompt:** {prompt2}")
+                    with st.spinner(f"Getting response from {model2_name}..."):
+                        # Create messages array with the current prompt
+                        messages2 = [{'role': 'user', 'content': prompt2}]
+                        response2 = call_ai_api(prompt2, model2, perplexity_key, groq_key, messages2)
+                        
+                        if response2:
+                            try:
+                                content2 = response2['choices'][0]['message']['content']
+                                st.markdown(content2)
+                                
+                                with st.expander(f"📊 {model2_name} Details"):
+                                    st.write("**Model:**", response2.get('model', model2))
+                                    st.write("**Provider:**", MODELS[model2]['provider'].title())
+                                    if 'usage' in response2:
+                                        st.write("**Tokens:**", response2['usage'].get('total_tokens', 'N/A'))
+                            except (KeyError, IndexError) as e:
+                                st.error(f"Error with {model2_name}")
+                        else:
+                            st.error(f"Failed to get response from {model2_name}")
+        
+        else:
+            # Regular single model mode
+            if not prompt:
+                st.warning("Please enter a question or prompt!")
+                return
+                
+            model_name = MODELS[model]['name']
+            
+            # Create a copy of conversation history and add current user message
+            current_messages = st.session_state.conversation_history.copy()
+            current_messages.append({
+                'role': 'user',
+                'content': prompt
+            })
+            
+            with st.spinner(f"Getting response from {model_name}..."):
+                # Make API call with the updated messages
+                response = call_ai_api(prompt, model, perplexity_key, groq_key, current_messages)
+                
+                if response:
+                    try:
+                        content = response['choices'][0]['message']['content']
+                        
+                        # Add user message to conversation history
+                        st.session_state.conversation_history.append({
+                            'role': 'user',
+                            'content': prompt
+                        })
+                        
+                        # Add AI response to conversation history
+                        st.session_state.conversation_history.append({
+                            'role': 'assistant',
+                            'content': content
+                        })
+                        
+                        # Display response
+                        st.markdown("---")
+                        st.markdown("### 💬 Response:")
+                        st.markdown(content)
+                        
+                        # Show additional info in expander
+                        with st.expander("📊 Response Details"):
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.write("**Model Used:**", response.get('model', model))
+                            with col2:
+                                st.write("**Provider:**", MODELS[model]['provider'].title())
+                            with col3:
+                                if 'usage' in response:
+                                    st.write("**Tokens Used:**", response['usage'].get('total_tokens', 'N/A'))
+                            
+                            st.json(response)
+                            
+                    except (KeyError, IndexError) as e:
+                        st.error("Error parsing response. Please try again.")
                         st.json(response)
-                        
-                except (KeyError, IndexError) as e:
-                    st.error("Error parsing response. Please try again.")
-                    st.json(response)
     
     elif submit_button and not prompt:
         st.warning("Please enter a question or prompt!")
