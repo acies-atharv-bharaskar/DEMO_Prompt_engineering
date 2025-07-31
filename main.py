@@ -361,6 +361,12 @@ def main():
     if submit_button and prompt:
         model_name = MODELS[model]['name']
         
+        # Add user message to conversation history BEFORE making API call
+        st.session_state.conversation_history.append({
+            'role': 'user',
+            'content': prompt
+        })
+        
         with st.spinner(f"Getting response from {model_name}..."):
             # Make API call
             response = call_ai_api(prompt, model, perplexity_key, groq_key)
@@ -368,12 +374,6 @@ def main():
             if response:
                 try:
                     content = response['choices'][0]['message']['content']
-                    
-                    # Add user message to conversation history
-                    st.session_state.conversation_history.append({
-                        'role': 'user',
-                        'content': prompt
-                    })
                     
                     # Add AI response to conversation history
                     st.session_state.conversation_history.append({
