@@ -14,6 +14,10 @@ st.set_page_config(
     layout="wide"
 )
 
+# Initialize session state for conversation history
+if 'conversation_history' not in st.session_state:
+    st.session_state.conversation_history = []
+
 # API configuration from environment variables
 PERPLEXITY_API_KEY = os.getenv('PERPLEXITY_API_KEY', '')
 GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')
@@ -136,14 +140,22 @@ def call_perplexity_api(prompt, model, api_key):
         'Content-Type': 'application/json'
     }
     
+    # Build messages array with conversation history
+    messages = []
+    
+    # Add conversation history
+    for message in st.session_state.conversation_history:
+        messages.append(message)
+    
+    # Add current user message
+    messages.append({
+        'role': 'user',
+        'content': prompt
+    })
+    
     data = {
         'model': model,
-        'messages': [
-            {
-                'role': 'user',
-                'content': prompt
-            }
-        ]
+        'messages': messages
     }
     
     try:
@@ -161,14 +173,22 @@ def call_groq_api(prompt, model, api_key):
         'Content-Type': 'application/json'
     }
     
+    # Build messages array with conversation history
+    messages = []
+    
+    # Add conversation history
+    for message in st.session_state.conversation_history:
+        messages.append(message)
+    
+    # Add current user message
+    messages.append({
+        'role': 'user',
+        'content': prompt
+    })
+    
     data = {
         'model': model,
-        'messages': [
-            {
-                'role': 'user',
-                'content': prompt
-            }
-        ]
+        'messages': messages
     }
     
     try:
@@ -309,6 +329,16 @@ def main():
         elif model == 'sonar-online':
             st.info("🌐 **REAL-TIME**: Access to current web information and live data!")
     
+    # Display conversation history
+    if st.session_state.conversation_history:
+        st.markdown("### 💬 Conversation History")
+        for i, message in enumerate(st.session_state.conversation_history):
+            if message['role'] == 'user':
+                st.markdown(f"**👤 You:** {message['content']}")
+            else:
+                st.markdown(f"**🤖 AI:** {message['content']}")
+        st.markdown("---")
+    
     # Main chat interface
     col1, col2 = st.columns([3, 1])
     
@@ -325,6 +355,7 @@ def main():
         clear_button = st.button("🗑️ Clear", use_container_width=True)
     
     if clear_button:
+        st.session_state.conversation_history = []
         st.rerun()
     
     if submit_button and prompt:
@@ -335,12 +366,24 @@ def main():
             response = call_ai_api(prompt, model, perplexity_key, groq_key)
             
             if response:
-                # Display response
-                st.markdown("---")
-                st.markdown("### 💬 Response:")
-                
                 try:
                     content = response['choices'][0]['message']['content']
+                    
+                    # Add user message to conversation history
+                    st.session_state.conversation_history.append({
+                        'role': 'user',
+                        'content': prompt
+                    })
+                    
+                    # Add AI response to conversation history
+                    st.session_state.conversation_history.append({
+                        'role': 'assistant',
+                        'content': content
+                    })
+                    
+                    # Display response
+                    st.markdown("---")
+                    st.markdown("### 💬 Response:")
                     st.markdown(content)
                     
                     # Show additional info in expander
